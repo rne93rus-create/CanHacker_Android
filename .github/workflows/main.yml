@@ -21,14 +21,13 @@ jobs:
           java-version: '17'
 
       - name: Build APK
-        run: |
-          chmod +x gradlew || true
-          if [ -f gradlew ]; then
-            ./gradlew assembleDebug
-          else
-            gradle assembleDebug
-          fi
 
+      
+        run: |
+          cd CanHacker_Android_Start
+          gradle assembleDebug
+
+        
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
