@@ -86,7 +86,7 @@ class MainActivity : Activity() {
             adapter = ArrayAdapter(
                 this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                listOf("125", "250", "500", "800", "1000")
+                listOf("125", "250", "500", "1000")
             )
             setSelection(2)
             setOnTouchListener { _, _ -> clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 45); false }
@@ -189,6 +189,7 @@ class MainActivity : Activity() {
             speedStatus.text = "Скорость CAN: ожидание ответа Arduino..."
             setStatus("USB подключён")
             startReader(newPort)
+            setCanSpeed(speedSelector.selectedItem.toString())
         } catch (e: Exception) {
             disconnect()
             setStatus("Ошибка USB: ${e.message}")
@@ -248,7 +249,10 @@ class MainActivity : Activity() {
                 val value = line.substringAfter('=').trim()
                 speedStatus.text = "Скорость CAN: ${value} кбит/с"
             }
-            line.startsWith("ERR", true) -> setStatus("Arduino: $line")
+            line.startsWith("ERR", true) -> {
+                setStatus("Arduino: $line")
+                speedStatus.text = "Скорость CAN: ошибка настройки"
+            }
             line.startsWith("ID=", true) -> {
                 if (receiving) framesText.append(line + "\n")
             }
