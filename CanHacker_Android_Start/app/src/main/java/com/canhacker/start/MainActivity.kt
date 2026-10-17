@@ -100,7 +100,7 @@ class MainActivity : Activity() {
         triggerText = TextView(this).apply { text = "TRIG —"; textSize = 16f; setTextColor(red); gravity = Gravity.CENTER; setPadding(8, 4, 8, 4) }
         top.addView(triggerText, weighted(0.8f))
         top.addView(TextView(this).apply { text = "Фильтр ID"; textSize = 13f; setTextColor(Color.DKGRAY); gravity = Gravity.CENTER }, weighted(0.55f))
-        filterInput = EditText(this).apply { textSize = 14f; singleLine = true; hint = "например 7E1"; setPadding(8, 2, 8, 2) }
+        filterInput = EditText(this).apply { textSize = 14f; isSingleLine = true; hint = "например 7E1"; setPadding(8, 2, 8, 2) }
         top.addView(filterInput, weighted(0.75f))
         top.addView(TextView(this).apply { text = "CAN"; gravity = Gravity.CENTER; setTextColor(Color.DKGRAY) }, weighted(0.3f))
         speedSelector = Spinner(this).apply {
