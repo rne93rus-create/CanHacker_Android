@@ -15,6 +15,10 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.ArrayAdapter
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.widget.TextView
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -24,8 +28,7 @@ class MainActivity : Activity() {
     private lateinit var usbManager: UsbManager
     private lateinit var status: TextView
     private lateinit var speedStatus: TextView
-    private lateinit var frameCounter: TextView
-    private lateinit var byteCounter: TextView
+    private lateinit var speedSelector: Spinner
     private lateinit var connectButton: Button
     private lateinit var startButton: Button
     private lateinit var framesText: TextView
@@ -33,8 +36,7 @@ class MainActivity : Activity() {
     private var ioManager: SerialInputOutputManager? = null
     private var connected = false
     private var receiving = false
-    private var frameCount = 0L
-    private var byteCount = 0L
+    private val clickTone by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
     private val rxBuffer = StringBuilder()
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
 
@@ -80,6 +82,24 @@ class MainActivity : Activity() {
         }
         layout.addView(speedStatus, matchWrap())
 
+        speedSelector = Spinner(this).apply {
+            adapter = ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("125", "250", "500", "800", "1000")
+            )
+            setSelection(2)
+            setOnTouchListener { _, _ -> clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 45); false }
+            onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, position: Int, id: Long) {
+                    if (connected) setCanSpeed(selectedItem.toString())
+                }
+            }
+        }
+        layout.addView(TextView(this).apply { text = "Скорость CAN, кбит/с"; textSize = 15f }, matchWrap())
+        layout.addView(speedSelector, matchWrap())
+
         connectButton = makeButton("Подключить") {
             if (connected) disconnect() else findDevice()
         }
@@ -88,13 +108,6 @@ class MainActivity : Activity() {
         startButton = makeButton("Старт") { toggleReceiving() }
         startButton.isEnabled = false
         layout.addView(startButton)
-
-        val counters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        frameCounter = TextView(this).apply { text = "Кадры: 0"; textSize = 15f }
-        byteCounter = TextView(this).apply { text = "Байты: 0"; textSize = 15f; gravity = Gravity.END }
-        counters.addView(frameCounter, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        counters.addView(byteCounter, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        layout.addView(counters)
 
         val scroll = ScrollView(this)
         framesText = TextView(this).apply {
@@ -126,7 +139,10 @@ class MainActivity : Activity() {
         Button(this).apply {
             text = label
             textSize = 16f
-            setOnClickListener { action() }
+            setOnClickListener {
+                clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 65)
+                action()
+            }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = 6 }
@@ -234,16 +250,18 @@ class MainActivity : Activity() {
             }
             line.startsWith("ERR", true) -> setStatus("Arduino: $line")
             line.startsWith("ID=", true) -> {
-                if (receiving) {
-                    frameCount++
-                    val data = Regex("DATA=([0-9A-Fa-f ]*)").find(line)?.groupValues?.get(1)?.trim().orEmpty()
-                    val bytes = if (data.isBlank()) 0 else data.split(Regex("\\s+")).size
-                    byteCount += bytes
-                    frameCounter.text = "Кадры: $frameCount"
-                    byteCounter.text = "Байты: $byteCount"
-                    framesText.append(line + "\n")
-                }
+                if (receiving) framesText.append(line + "\n")
             }
+        }
+    }
+
+    private fun setCanSpeed(rate: String) {
+        val p = port ?: return
+        try {
+            p.write("CAN SPEED $rate\n".toByteArray(Charsets.US_ASCII), 1000)
+            speedStatus.text = "Скорость CAN: настройка $rate кбит/с..."
+        } catch (e: Exception) {
+            setStatus("Ошибка скорости CAN: ${e.message}")
         }
     }
 
