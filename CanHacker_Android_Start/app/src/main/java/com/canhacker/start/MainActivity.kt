@@ -23,8 +23,10 @@ import com.hoho.android.usbserial.util.SerialInputOutputManager
 class MainActivity : Activity() {
     private lateinit var usbManager: UsbManager
     private lateinit var status: TextView
+    private lateinit var startButton: Button
     private var port: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
+    private var streaming = false
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
 
     private val permissionReceiver = object : BroadcastReceiver() {
@@ -59,9 +61,14 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         layout.addView(makeButton("1. Подключить Arduino") { findDevice() })
-        layout.addView(makeButton("2. START") { sendCommand("START\n") })
-        layout.addView(makeButton("STOP") { sendCommand("STOP\n") })
-        layout.addView(makeButton("Отключить") { closePort(); setStatus("Отключено") })
+        startButton = makeButton("2. START") {
+            if (streaming) stopCapture() else startCapture()
+        }
+        layout.addView(startButton)
+        layout.addView(makeButton("Отключить") {
+            closePort()
+            setStatus("Отключено")
+        })
 
         setContentView(layout)
 
@@ -121,17 +128,39 @@ class MainActivity : Activity() {
             port = newPort
             ioManager = SerialInputOutputManager(newPort, object : SerialInputOutputManager.Listener {
                 override fun onNewData(data: ByteArray) {
-                    runOnUiThread { setStatus("Подключено • принято ${data.size} байт") }
+                    val received = String(data, Charsets.US_ASCII).trim()
+                    if (received.isNotEmpty()) {
+                        runOnUiThread {
+                            when {
+                                received.contains("STARTED") -> {
+                                    streaming = true
+                                    startButton.text = "STOP"
+                                    setStatus("Приём CAN запущен")
+                                }
+                                received.contains("STOPPED") -> {
+                                    streaming = false
+                                    startButton.text = "2. START"
+                                    setStatus("Приём CAN остановлен")
+                                }
+                                received.contains("ERR") -> setStatus("Arduino: $received")
+                            }
+                        }
+                    }
                 }
                 override fun onRunError(e: Exception) {
                     runOnUiThread { setStatus("Ошибка порта: ${e.message}") }
                 }
             }).also { it.start() }
+            streaming = false
+            startButton.text = "2. START"
             setStatus("Arduino подключена • 115200, 8N1")
         } catch (e: Exception) {
             setStatus("Ошибка: ${e.message}")
         }
     }
+
+    private fun startCapture() = sendCommand("START\\n")
+    private fun stopCapture() = sendCommand("STOP\\n")
 
     private fun sendCommand(command: String) {
         val activePort = port
@@ -141,13 +170,15 @@ class MainActivity : Activity() {
         }
         try {
             activePort.write(command.toByteArray(Charsets.US_ASCII), 1000)
-            setStatus("Отправлено: ${command.trim()}")
+            setStatus("Команда отправлена: ${command.trim()}")
         } catch (e: Exception) {
             setStatus("Ошибка отправки: ${e.message}")
         }
     }
 
     private fun closePort() {
+        streaming = false
+        startButton.text = "2. START"
         try { ioManager?.stop() } catch (_: Exception) {}
         ioManager = null
         try { port?.close() } catch (_: Exception) {}
