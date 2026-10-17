@@ -50,6 +50,7 @@ class MainActivity : Activity() {
     private val changedIds = mutableSetOf<String>()
     private val blockNames = mutableMapOf<String, String>()
     private val clickTone by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
+    private val triggerTone by lazy { ToneGenerator(AudioManager.STREAM_ALARM, 100) }
     private val rxBuffer = StringBuilder()
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
     private val bg = Color.rgb(244, 247, 252)
@@ -93,8 +94,11 @@ class MainActivity : Activity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg); setPadding(8, 6, 8, 6) }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(TextView(this).apply { text = "CanHacker  1.3.24"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
+        val connectionControls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         connectButton = button("Подключить") { if (connected) disconnect() else findDevice() }
-        top.addView(connectButton, weighted(0.8f))
+        connectionControls.addView(connectButton, LinearLayout.LayoutParams(-1, -2))
+        connectionControls.addView(button("Reset") { resetMemory() }, LinearLayout.LayoutParams(-1, -2))
+        top.addView(connectionControls, weighted(0.8f))
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
         top.addView(startButton, weighted(0.6f))
         triggerText = TextView(this).apply { text = "TRIG —"; textSize = 16f; setTextColor(red); gravity = Gravity.CENTER; setPadding(8, 4, 8, 4) }
@@ -138,7 +142,7 @@ class MainActivity : Activity() {
         right.addView(historyTitle)
         val historyScroll = ScrollView(this)
         historyTable = TableLayout(this)
-        historyTable.addView(makeRow(listOf("№", "Time", "Data"), true))
+        historyTable.addView(makeRow(listOf("№", "Time", "Data"), true, 15f))
         historyScroll.addView(historyTable)
         right.addView(historyScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         main.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
@@ -237,7 +241,8 @@ class MainActivity : Activity() {
             line == "BUTTON_PRESS" -> if (receiving) {
                 val stamp = SystemClock.elapsedRealtime()
                 triggerText.text = "TRIG ${formatElapsed(stamp - startElapsedRealtime)}"
-                clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
+                triggerTone.stopTone()
+                triggerTone.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
                 status.text = "Нажатие внешней кнопки"
                 frames.forEach { (id, frame) ->
                     frame.history.add(stamp to List(frame.data.size) { "--" })
@@ -316,12 +321,28 @@ class MainActivity : Activity() {
         val f = frames[id] ?: return
         f.history.takeLast(200).forEachIndexed { index, entry ->
             val elapsed = formatElapsed(entry.first - startElapsedRealtime)
-            val row = makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false)
+            val row = makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false, 15f)
             if (entry.second.isNotEmpty() && entry.second.all { it == "--" }) {
                 (row.getChildAt(2) as TextView).setTextColor(red)
             }
             historyTable.addView(row)
         }
+    }
+
+    private fun resetMemory() {
+        frames.clear()
+        rowViews.clear()
+        previousData.clear()
+        changedIds.clear()
+        blockNames.clear()
+        while (table.childCount > 1) table.removeViewAt(1)
+        while (historyTable.childCount > 1) historyTable.removeViewAt(1)
+        selectedId = null
+        rxCount = 0
+        countText.text = "Кадров: 0"
+        historyTitle.text = "ID: —"
+        triggerText.text = "TRIG —"
+        setStatus("Память очищена")
     }
 
     private fun setCanSpeed(rate: String) {
