@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private lateinit var speedSelector: Spinner
     private lateinit var connectButton: Button
     private lateinit var startButton: Button
+    private lateinit var resetButton: Button
     private lateinit var triggerText: TextView
     private lateinit var table: TableLayout
     private lateinit var historyTable: TableLayout
@@ -97,6 +98,8 @@ class MainActivity : Activity() {
         top.addView(connectButton, weighted(0.8f))
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
         top.addView(startButton, weighted(0.6f))
+        resetButton = button("Reset") { resetMemory() }.apply { isEnabled = false }
+        top.addView(resetButton, weighted(0.55f))
         triggerText = TextView(this).apply { text = "TRIG —"; textSize = 16f; setTextColor(red); gravity = Gravity.CENTER; setPadding(8, 4, 8, 4) }
         top.addView(triggerText, weighted(0.8f))
         top.addView(TextView(this).apply { text = "CAN"; gravity = Gravity.CENTER; setTextColor(Color.DKGRAY) }, weighted(0.3f))
@@ -186,7 +189,7 @@ class MainActivity : Activity() {
             newPort.open(connection)
             newPort.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             port = newPort; connected = true; receiving = false
-            connectButton.text = "Отключить"; startButton.text = "Старт"; startButton.isEnabled = true
+            connectButton.text = "Отключить"; startButton.text = "Старт"; startButton.isEnabled = true; resetButton.isEnabled = true
             connectionElapsedRealtime = SystemClock.elapsedRealtime()
             synchronized(rxBuffer) { rxBuffer.clear() }
             startReader(newPort)
@@ -218,7 +221,7 @@ class MainActivity : Activity() {
         try {
             if (receiving) {
                 p.write("STOP\n".toByteArray(Charsets.US_ASCII), 1000)
-                receiving = false; startButton.text = "Старт"; setStatus("Приём остановлен")
+                receiving = false; startButton.text = "Старт"; resetMemory(); setStatus("Приём остановлен, память очищена")
             } else {
                 p.write("START\n".toByteArray(Charsets.US_ASCII), 1000)
                 receiving = true; startElapsedRealtime = SystemClock.elapsedRealtime()
@@ -240,7 +243,7 @@ class MainActivity : Activity() {
                 clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
                 status.text = "Нажатие внешней кнопки"
                 frames.forEach { (id, frame) ->
-                    frame.history.add(stamp to List(8) { "◇" })
+                    frame.history.add(stamp to List(8) { "▲" })
                     if (frame.history.size > 500) repeat(100) { if (frame.history.isNotEmpty()) frame.history.removeAt(0) }
                     if (selectedId == id) renderHistory(id)
                 }
@@ -312,7 +315,11 @@ class MainActivity : Activity() {
         val f = frames[id] ?: return
         f.history.takeLast(200).forEachIndexed { index, entry ->
             val elapsed = formatElapsed(entry.first - connectionElapsedRealtime)
-            historyTable.addView(makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false))
+            val row = makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false)
+            if (entry.second.isNotEmpty() && entry.second.all { it == "▲" }) {
+                (row.getChildAt(2) as TextView).setTextColor(red)
+            }
+            historyTable.addView(row)
         }
     }
 
@@ -332,8 +339,23 @@ class MainActivity : Activity() {
         ioManager = null
         try { port?.close() } catch (_: Exception) {}
         port = null
-        connectButton.text = "Подключить"; startButton.text = "Старт"; startButton.isEnabled = false
+        connectButton.text = "Подключить"; startButton.text = "Старт"; startButton.isEnabled = false; resetButton.isEnabled = false
         speedStatus.text = "CAN: —"; setStatus("Отключено")
+    }
+
+    private fun resetMemory() {
+        frames.clear()
+        rowViews.clear()
+        previousData.clear()
+        changedIds.clear()
+        blockNames.clear()
+        selectedId = null
+        rxCount = 0
+        table.removeViews(1, (table.childCount - 1).coerceAtLeast(0))
+        historyTable.removeViews(1, (historyTable.childCount - 1).coerceAtLeast(0))
+        historyTitle.text = "История ID —"
+        countText.text = "Кадров: 0"
+        triggerText.text = "TRIG —"
     }
 
     private fun formatElapsed(ms: Long): String {
