@@ -240,7 +240,7 @@ class MainActivity : Activity() {
                 clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
                 status.text = "Нажатие внешней кнопки"
                 frames.forEach { (id, frame) ->
-                    frame.history.add(stamp to List(8) { "◇" })
+                    frame.history.add(stamp to List(8) { "▲" })
                     if (frame.history.size > 500) repeat(100) { if (frame.history.isNotEmpty()) frame.history.removeAt(0) }
                     if (selectedId == id) renderHistory(id)
                 }
@@ -280,7 +280,7 @@ class MainActivity : Activity() {
     private fun updateRow(id: String) {
         val f = frames[id] ?: return
         val existing = rowViews[id]
-        val elapsed = formatElapsed(f.last - connectionElapsedRealtime)
+        val elapsed = formatElapsed(f.last - startElapsedRealtime)
         val values = listOf(f.number.toString(), "0x$id", if (id in changedIds) "◆" else "",
             blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
             "%.1f Hz".format(f.hz), f.count.toString(), elapsed)
@@ -311,7 +311,7 @@ class MainActivity : Activity() {
         while (historyTable.childCount > 1) historyTable.removeViewAt(1)
         val f = frames[id] ?: return
         f.history.takeLast(200).forEachIndexed { index, entry ->
-            val elapsed = formatElapsed(entry.first - connectionElapsedRealtime)
+            val elapsed = formatElapsed(entry.first - startElapsedRealtime)
             val row = makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false)
             if (entry.second.isNotEmpty() && entry.second.all { it == "▲" }) {
                 (row.getChildAt(2) as TextView).setTextColor(red)
