@@ -103,11 +103,12 @@ void setup() {
   pinMode(CAN_INT_PIN, INPUT);
   delay(300);
 
+  streamingEnabled = false;
   if (beginCAN(500)) {
-    streamingEnabled = true;  // Begin showing CAN frames immediately after startup.
     Serial.println("READY");
     Serial.print("CAN_SPEED=");
     Serial.println(currentBitrate);
+    Serial.println("STOPPED");
   } else {
     Serial.println("ERR MCP2515_INIT");
   }
