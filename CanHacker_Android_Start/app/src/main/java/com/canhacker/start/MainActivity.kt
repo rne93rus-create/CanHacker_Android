@@ -33,6 +33,7 @@ class MainActivity : Activity() {
     private lateinit var startButton: Button
     private lateinit var triggerText: TextView
     private lateinit var filterInput: EditText
+    private lateinit var blockNameInput: EditText
     private lateinit var table: TableLayout
     private lateinit var historyTable: TableLayout
     private lateinit var historyTitle: TextView
@@ -92,7 +93,7 @@ class MainActivity : Activity() {
     private fun buildUi() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg); setPadding(8, 6, 8, 6) }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(TextView(this).apply { text = "CanHacker  1.3.0"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
+        top.addView(TextView(this).apply { text = "CanHacker  1.3.23"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
         connectButton = button("Подключить") { if (connected) disconnect() else findDevice() }
         top.addView(connectButton, weighted(0.8f))
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
@@ -121,6 +122,14 @@ class MainActivity : Activity() {
         statusBar.addView(speedStatus)
         countText = TextView(this).apply { text = "Кадров: 0"; textSize = 13f; setPadding(14, 0, 4, 0); setTextColor(Color.DKGRAY) }
         statusBar.addView(countText)
+        statusBar.addView(TextView(this).apply { text = "Имя блока:"; textSize = 13f; setPadding(14, 0, 4, 0); setTextColor(Color.DKGRAY) })
+        blockNameInput = EditText(this).apply { textSize = 13f; isSingleLine = true; hint = "Выберите ID"; isEnabled = false; setPadding(6, 0, 6, 0) }
+        statusBar.addView(blockNameInput, LinearLayout.LayoutParams(180, 42))
+        statusBar.addView(button("Сохранить имя") {
+            val id = selectedId
+            if (id != null) { blockNames[id] = blockNameInput.text.toString().trim(); renderRows(); setStatus("Имя блока сохранено") }
+            else setStatus("Сначала выберите строку ID")
+        }, LinearLayout.LayoutParams(-2, 40))
         root.addView(statusBar)
 
         val main = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 2, 0, 0) }
@@ -129,7 +138,7 @@ class MainActivity : Activity() {
         val tableScroll = HorizontalScrollView(this)
         val verticalScroll = ScrollView(this)
         table = TableLayout(this).apply { isStretchAllColumns = false }
-        val headings = listOf("№", "ID", "Изм", "Имя блока", "DLC", "Data", "Частота", "Кол. кадров", "Время последнего кадра")
+        val headings = listOf("№", "ID", "Изм", "Имя блока", "DLC", "Data", "Частота", "Кадров", "Посл. кадр")
         table.addView(makeRow(headings, true))
         verticalScroll.addView(table)
         tableScroll.addView(verticalScroll)
@@ -141,7 +150,7 @@ class MainActivity : Activity() {
         right.addView(historyTitle)
         val historyScroll = ScrollView(this)
         historyTable = TableLayout(this)
-        historyTable.addView(makeRow(listOf("№", "Время от старта", "DLC", "Data"), true))
+        historyTable.addView(makeRow(listOf("Data", "Время"), true))
         historyScroll.addView(historyTable)
         right.addView(historyScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         main.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
@@ -302,11 +311,14 @@ class MainActivity : Activity() {
     private fun renderHistory(id: String) {
         selectedId = id
         historyTitle.text = "История ID: 0x$id"
+        blockNameInput.isEnabled = true
+        blockNameInput.setText(blockNames[id] ?: "")
+        blockNameInput.hint = "Имя блока для 0x$id"
         while (historyTable.childCount > 1) historyTable.removeViewAt(1)
         val f = frames[id] ?: return
-        f.history.takeLast(200).forEachIndexed { index, entry ->
+        f.history.takeLast(200).forEach { entry ->
             val elapsed = formatElapsed(entry.first - connectionElapsedRealtime)
-            historyTable.addView(makeRow(listOf((index + 1).toString(), elapsed, entry.second.size.toString(), entry.second.joinToString(" ")), false))
+            historyTable.addView(makeRow(listOf(entry.second.joinToString(" "), elapsed), false))
         }
     }
 
