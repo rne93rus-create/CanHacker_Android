@@ -10,6 +10,8 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
+import android.graphics.Color
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -32,6 +34,8 @@ class MainActivity : Activity() {
     private lateinit var connectButton: Button
     private lateinit var startButton: Button
     private lateinit var framesText: TextView
+    private lateinit var triggerText: TextView
+    private var startElapsedRealtime = 0L
     private var port: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
     private var connected = false
@@ -108,6 +112,15 @@ class MainActivity : Activity() {
         startButton = makeButton("Старт") { toggleReceiving() }
         startButton.isEnabled = false
         layout.addView(startButton)
+
+        triggerText = TextView(this).apply {
+            text = "TRIG  —"
+            textSize = 18f
+            setTextColor(Color.RED)
+            gravity = Gravity.CENTER
+            setPadding(0, 4, 0, 10)
+        }
+        layout.addView(triggerText, matchWrap())
 
         val scroll = ScrollView(this)
         framesText = TextView(this).apply {
@@ -235,6 +248,8 @@ class MainActivity : Activity() {
             } else {
                 p.write("START\n".toByteArray(Charsets.US_ASCII), 1000)
                 receiving = true
+                startElapsedRealtime = SystemClock.elapsedRealtime()
+                triggerText.text = "TRIG  —"
                 startButton.text = "Стоп"
                 setStatus("Приём CAN запущен")
             }
@@ -260,6 +275,13 @@ class MainActivity : Activity() {
             line.startsWith("ERR", true) -> {
                 setStatus("Arduino: $line")
                 speedStatus.text = "Скорость CAN: ошибка настройки"
+            }
+            line.equals("BUTTON_PRESS", true) -> {
+                if (receiving) {
+                    val elapsed = (SystemClock.elapsedRealtime() - startElapsedRealtime).coerceAtLeast(0L)
+                    triggerText.text = "TRIG  ${formatElapsed(elapsed)}"
+                    clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
+                }
             }
             line.startsWith("ID=", true) -> {
                 if (receiving) framesText.append(line + "\n")
@@ -296,6 +318,13 @@ class MainActivity : Activity() {
         startButton.isEnabled = false
         speedStatus.text = "Скорость CAN: —"
         setStatus("Отключено")
+    }
+
+    private fun formatElapsed(ms: Long): String {
+        val minutes = ms / 60_000
+        val seconds = (ms / 1_000) % 60
+        val millis = ms % 1_000
+        return "%02d:%02d.%03d".format(minutes, seconds, millis)
     }
 
     private fun setStatus(message: String) { status.text = message }
