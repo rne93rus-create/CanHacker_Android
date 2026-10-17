@@ -284,7 +284,7 @@ class MainActivity : Activity() {
         val f = frames[id] ?: return
         val existing = rowViews[id]
         val elapsed = formatElapsed(f.last - startElapsedRealtime)
-        val values = listOf(f.number.toString(), "0x$id", if (id in changedIds) "◆" else "",
+        val values = listOf(f.number.toString(), id, if (id in changedIds) "◆" else "",
             blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
             "%.1f".format(f.hz), f.count.toString(), elapsed)
         val row = existing ?: makeRow(values, false, 15f, 5).also { created ->
@@ -307,14 +307,14 @@ class MainActivity : Activity() {
 
     private fun editBlockName(id: String) {
         val input = EditText(this).apply { setText(blockNames[id] ?: ""); hint = "Имя блока" }
-        android.app.AlertDialog.Builder(this).setTitle("ID 0x$id").setView(input)
+        android.app.AlertDialog.Builder(this).setTitle("ID $id").setView(input)
             .setPositiveButton("Сохранить") { _, _ -> blockNames[id] = input.text.toString().trim(); updateRow(id) }
             .setNegativeButton("Отмена", null).show()
     }
 
     private fun renderHistory(id: String) {
         selectedId = id
-        historyTitle.text = "ID: 0x$id"
+        historyTitle.text = "ID: $id"
         while (historyTable.childCount > 1) historyTable.removeViewAt(1)
         val f = frames[id] ?: return
         f.history.takeLast(200).forEachIndexed { index, entry ->
