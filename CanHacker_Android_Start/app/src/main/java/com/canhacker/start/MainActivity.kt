@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private var rxCount = 0
     private var selectedId: String? = null
     private val frames = linkedMapOf<String, FrameInfo>()
+    private val rowViews = mutableMapOf<String, TableRow>()
     private val previousData = mutableMapOf<String, List<String>>()
     private val changedIds = mutableSetOf<String>()
     private val blockNames = mutableMapOf<String, String>()
@@ -92,7 +93,7 @@ class MainActivity : Activity() {
     private fun buildUi() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg); setPadding(8, 6, 8, 6) }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(TextView(this).apply { text = "CanHacker  1.3.0"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
+        top.addView(TextView(this).apply { text = "CanHacker  1.3.24"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
         connectButton = button("Подключить") { if (connected) disconnect() else findDevice() }
         top.addView(connectButton, weighted(0.8f))
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
@@ -271,31 +272,50 @@ class MainActivity : Activity() {
         if (changed) { changedIds.add(id); item.changedAt = now }
         rxCount++
         countText.text = "Кадров: $rxCount"
-        renderRows()
-        if (selectedId == id) renderHistory(id)
+        updateRow(id)
+        if (!receiving && selectedId == id) renderHistory(id)
     }
 
+    // Full rebuild only when the filter changes; incoming CAN frames update one row.
     private fun renderRows() {
-        while (table.childCount > 1) table.removeViewAt(1)
+        for (row in rowViews.values) table.removeView(row)
+        rowViews.clear()
+        frames.keys.forEach { updateRow(it) }
+    }
+
+    private fun updateRow(id: String) {
+        val f = frames[id] ?: return
         val filter = filterInput.text.toString().trim().uppercase()
-        frames.forEach { (id, f) ->
-            if (filter.isNotEmpty() && !id.contains(filter)) return@forEach
-            val elapsed = formatElapsed(f.last - connectionElapsedRealtime)
-            val row = makeRow(listOf(f.number.toString(), "0x$id", if (id in changedIds) "◆" else "", blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "), "%.1f Hz".format(f.hz), f.count.toString(), elapsed), false)
-            if (id in changedIds) {
-                for (i in 0 until row.childCount) (row.getChildAt(i) as TextView).setBackgroundColor(Color.rgb(255, 229, 229))
-                (row.getChildAt(2) as TextView).setTextColor(red)
+        val existing = rowViews[id]
+        if (filter.isNotEmpty() && !id.contains(filter)) {
+            if (existing != null) {
+                table.removeView(existing)
+                rowViews.remove(id)
             }
-            row.setOnClickListener { selectedId = id; renderHistory(id) }
-            row.setOnLongClickListener { editBlockName(id); true }
-            table.addView(row)
+            return
+        }
+        val elapsed = formatElapsed(f.last - connectionElapsedRealtime)
+        val values = listOf(f.number.toString(), "0x$id", if (id in changedIds) "◆" else "",
+            blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
+            "%.1f Hz".format(f.hz), f.count.toString(), elapsed)
+        val row = existing ?: makeRow(values, false).also { created ->
+            created.setOnClickListener { selectedId = id; if (!receiving) renderHistory(id) }
+            created.setOnLongClickListener { editBlockName(id); true }
+            table.addView(created)
+            rowViews[id] = created
+        }
+        values.forEachIndexed { index, value -> (row.getChildAt(index) as TextView).text = value }
+        for (i in 0 until row.childCount) {
+            val cell = row.getChildAt(i) as TextView
+            cell.setBackgroundColor(if (id in changedIds) Color.rgb(255, 229, 229) else Color.WHITE)
+            cell.setTextColor(if (id in changedIds && i == 2) red else Color.rgb(25, 40, 60))
         }
     }
 
     private fun editBlockName(id: String) {
         val input = EditText(this).apply { setText(blockNames[id] ?: ""); hint = "Имя блока" }
         android.app.AlertDialog.Builder(this).setTitle("ID 0x$id").setView(input)
-            .setPositiveButton("Сохранить") { _, _ -> blockNames[id] = input.text.toString().trim(); renderRows() }
+            .setPositiveButton("Сохранить") { _, _ -> blockNames[id] = input.text.toString().trim(); updateRow(id) }
             .setNegativeButton("Отмена", null).show()
     }
 
