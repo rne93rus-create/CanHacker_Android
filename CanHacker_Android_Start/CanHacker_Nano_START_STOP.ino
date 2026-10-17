@@ -5,7 +5,6 @@
 // CS=D10, INT=D2, SPI: MOSI=D11, MISO=D12, SCK=D13
 const byte CAN_CS_PIN = 10;
 const byte CAN_INT_PIN = 2;
-const byte BUTTON_PIN = 3;
 
 MCP_CAN CAN0(CAN_CS_PIN);
 String commandLine = "";
@@ -102,11 +101,13 @@ void setup() {
   Serial.begin(115200);
   commandLine.reserve(48);
   pinMode(CAN_INT_PIN, INPUT);
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
   delay(300);
 
   if (beginCAN(500)) {
+    streamingEnabled = true;  // Begin showing CAN frames immediately after startup.
     Serial.println("READY");
+    Serial.print("CAN_SPEED=");
+    Serial.println(currentBitrate);
   } else {
     Serial.println("ERR MCP2515_INIT");
   }
