@@ -77,7 +77,7 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         layout.addView(makeButton("1. Подключить Arduino") { findDevice() })
-        startButton = makeButton("STOP") {
+        startButton = makeButton("START") {
             if (streaming) stopCapture() else startCapture()
         }
         startButton.isEnabled = false
@@ -170,12 +170,11 @@ class MainActivity : Activity() {
                 }
             }).also { it.start() }
 
-            // The Nano firmware starts CAN reception automatically after initialization.
-            streaming = true
-            startButton.text = "STOP"
+            streaming = false
+            startButton.text = "START"
             startButton.isEnabled = true
             speedStatus.text = "Скорость CAN: ${currentCanSpeed} кбит/с"
-            setStatus("Arduino подключена • автоматический приём CAN")
+            setStatus("Arduino подключена • нажми START")
         } catch (e: Exception) {
             setStatus("Ошибка: ${e.message}")
         }
@@ -201,7 +200,7 @@ class MainActivity : Activity() {
             }
             line.startsWith("ERR") -> setStatus("Arduino: $line")
             line == "READY" -> setStatus("Arduino готова")
-            line.startsWith("ID=") -> setStatus("CAN: $line")
+            line.startsWith("ID=") && streaming -> setStatus("CAN: $line")
         }
     }
 
@@ -215,11 +214,8 @@ class MainActivity : Activity() {
             return
         }
         try {
-            // Update the toggle immediately; do not depend on a possibly delayed serial reply.
-            streaming = command.startsWith("START")
-            startButton.text = if (streaming) "STOP" else "START"
             activePort.write(command.toByteArray(Charsets.US_ASCII), 1000)
-            setStatus(if (streaming) "Запуск приёма CAN…" else "Остановка приёма CAN…")
+            setStatus(if (command.startsWith("START")) "Запуск приёма CAN…" else "Остановка приёма CAN…")
         } catch (e: Exception) {
             setStatus("Ошибка отправки: ${e.message}")
         }
