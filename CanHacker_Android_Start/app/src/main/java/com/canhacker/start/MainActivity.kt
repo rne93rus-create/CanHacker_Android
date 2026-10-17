@@ -128,8 +128,8 @@ class MainActivity : Activity() {
         val tableScroll = HorizontalScrollView(this)
         val verticalScroll = ScrollView(this)
         table = TableLayout(this).apply { isStretchAllColumns = false }
-        val headings = listOf("ID", "DLC", "Dif", "Name", "DLC", "Data", "Hz", "Frames", "Last fr")
-        table.addView(makeRow(headings, true, 15f))
+        val headings = listOf("N", "ID", "Dif", "Name", "DLC", "Data", "Hz", "Frames", "Last fr")
+        table.addView(makeRow(headings, true, 15f, 5))
         verticalScroll.addView(table)
         tableScroll.addView(verticalScroll)
         left.addView(tableScroll, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -140,7 +140,7 @@ class MainActivity : Activity() {
         right.addView(historyTitle)
         val historyScroll = ScrollView(this)
         historyTable = TableLayout(this)
-        historyTable.addView(makeRow(listOf("№", "Time", "Data"), true, 15f))
+        historyTable.addView(makeRow(listOf("№", "Time", "Data"), true, 15f, 1))
         historyScroll.addView(historyTable)
         right.addView(historyScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         main.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
@@ -154,7 +154,7 @@ class MainActivity : Activity() {
         text = label; textSize = 13f; minHeight = 38; setPadding(5, 0, 5, 0)
         setOnClickListener { clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 100); action() }
     }
-    private fun makeRow(values: List<String>, header: Boolean, fontSize: Float = 12f): TableRow {
+    private fun makeRow(values: List<String>, header: Boolean, fontSize: Float = 12f, spacingAfterIndex: Int = -1): TableRow {
         val row = TableRow(this)
         values.forEachIndexed { index, value ->
             val cell = TextView(this).apply {
@@ -162,7 +162,7 @@ class MainActivity : Activity() {
                 setTextColor(if (header) Color.WHITE else Color.rgb(25, 40, 60))
                 if (header) { setBackgroundColor(blue); setTypeface(null, Typeface.BOLD) }
                 else setBackgroundColor(Color.WHITE)
-                setPadding(11, 7, if (index == 0) 27 else 11, 7); gravity = Gravity.CENTER_VERTICAL
+                setPadding(11, 7, if (index == 0) 27 else if (index == spacingAfterIndex) 27 else 11, 7); gravity = Gravity.CENTER_VERTICAL
                 minWidth = when (index) { 0 -> 35; 1 -> 65; 2 -> 40; 3 -> 75; 4 -> 35; 5 -> 155; 6 -> 65; 7 -> 70; else -> 110 }
             }
             row.addView(cell)
@@ -287,7 +287,7 @@ class MainActivity : Activity() {
         val values = listOf(f.number.toString(), "0x$id", if (id in changedIds) "◆" else "",
             blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
             "%.1f".format(f.hz), f.count.toString(), elapsed)
-        val row = existing ?: makeRow(values, false, 15f).also { created ->
+        val row = existing ?: makeRow(values, false, 15f, 5).also { created ->
             created.setOnClickListener { selectedId = id; refreshRowHighlights(); if (!receiving) renderHistory(id) }
             created.setOnLongClickListener { editBlockName(id); true }
             table.addView(created)
@@ -319,7 +319,7 @@ class MainActivity : Activity() {
         val f = frames[id] ?: return
         f.history.takeLast(200).forEachIndexed { index, entry ->
             val elapsed = formatElapsed(entry.first - startElapsedRealtime)
-            val row = makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false, 15f)
+            val row = makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false, 15f, 1)
             if (entry.second.isNotEmpty() && entry.second.all { it == "--" }) {
                 (row.getChildAt(2) as TextView).setTextColor(red)
             }
