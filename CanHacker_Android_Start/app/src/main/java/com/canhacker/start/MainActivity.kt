@@ -94,9 +94,10 @@ class MainActivity : Activity() {
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(TextView(this).apply { text = "CanHacker  2.0"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
         val resetButton = button("Reset") { resetMemory() }.apply {
-            setBackgroundColor(Color.rgb(255, 190, 190))
+            setBackgroundColor(Color.rgb(255, 77, 77))
+            setTextColor(Color.BLACK)
         }
-        top.addView(resetButton, weighted(0.55f).apply { height = dp(48) })
+        top.addView(resetButton, weighted(0.55f))
         connectButton = button("Подключить") { if (connected) disconnect() else findDevice() }
         top.addView(connectButton, weighted(0.8f).apply { height = dp(48) })
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
