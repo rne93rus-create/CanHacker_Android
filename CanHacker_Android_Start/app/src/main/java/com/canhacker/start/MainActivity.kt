@@ -134,7 +134,7 @@ class MainActivity : Activity() {
         main.addView(left, LinearLayout.LayoutParams(0, -1, 2.1f))
 
         val right = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 0, 0, 0) }
-        historyTitle = TextView(this).apply { text = "История ID —"; textSize = 15f; setTypeface(null, Typeface.BOLD); setTextColor(blue); setPadding(4, 4, 4, 4) }
+        historyTitle = TextView(this).apply { text = "ID: —"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue); setPadding(4, 4, 4, 4) }
         right.addView(historyTitle)
         val historyScroll = ScrollView(this)
         historyTable = TableLayout(this)
@@ -237,10 +237,10 @@ class MainActivity : Activity() {
             line == "BUTTON_PRESS" -> if (receiving) {
                 val stamp = SystemClock.elapsedRealtime()
                 triggerText.text = "TRIG ${formatElapsed(stamp - startElapsedRealtime)}"
-                clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
+                clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
                 status.text = "Нажатие внешней кнопки"
                 frames.forEach { (id, frame) ->
-                    frame.history.add(stamp to List(8) { "◆" })
+                    frame.history.add(stamp to List(frame.data.size) { "--" })
                     if (frame.history.size > 500) repeat(100) { if (frame.history.isNotEmpty()) frame.history.removeAt(0) }
                     if (selectedId == id) renderHistory(id)
                 }
@@ -283,9 +283,9 @@ class MainActivity : Activity() {
         val elapsed = formatElapsed(f.last - startElapsedRealtime)
         val values = listOf(f.number.toString(), "0x$id", if (id in changedIds) "◆" else "",
             blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
-            "%.1f Hz".format(f.hz), f.count.toString(), elapsed)
+            "%.1f".format(f.hz), f.count.toString(), elapsed)
         val row = existing ?: makeRow(values, false, 15f).also { created ->
-            created.setOnClickListener { selectedId = id; if (!receiving) renderHistory(id) }
+            created.setOnClickListener { selectedId = id; refreshRowHighlights(); if (!receiving) renderHistory(id) }
             created.setOnLongClickListener { editBlockName(id); true }
             table.addView(created)
             rowViews[id] = created
@@ -293,9 +293,13 @@ class MainActivity : Activity() {
         values.forEachIndexed { index, value -> (row.getChildAt(index) as TextView).text = value }
         for (i in 0 until row.childCount) {
             val cell = row.getChildAt(i) as TextView
-            cell.setBackgroundColor(Color.WHITE)
+            cell.setBackgroundColor(if (id == selectedId) Color.rgb(255, 225, 225) else Color.WHITE)
             cell.setTextColor(if (id in changedIds && i == 2) red else Color.rgb(25, 40, 60))
         }
+    }
+
+    private fun refreshRowHighlights() {
+        rowViews.keys.toList().forEach { updateRow(it) }
     }
 
     private fun editBlockName(id: String) {
@@ -307,13 +311,13 @@ class MainActivity : Activity() {
 
     private fun renderHistory(id: String) {
         selectedId = id
-        historyTitle.text = "История ID: 0x$id"
+        historyTitle.text = "ID: 0x$id"
         while (historyTable.childCount > 1) historyTable.removeViewAt(1)
         val f = frames[id] ?: return
         f.history.takeLast(200).forEachIndexed { index, entry ->
             val elapsed = formatElapsed(entry.first - startElapsedRealtime)
             val row = makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false)
-            if (entry.second.isNotEmpty() && entry.second.all { it == "▲" }) {
+            if (entry.second.isNotEmpty() && entry.second.all { it == "--" }) {
                 (row.getChildAt(2) as TextView).setTextColor(red)
             }
             historyTable.addView(row)
