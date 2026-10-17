@@ -32,7 +32,6 @@ class MainActivity : Activity() {
     private lateinit var connectButton: Button
     private lateinit var startButton: Button
     private lateinit var triggerText: TextView
-    private lateinit var filterInput: EditText
     private lateinit var table: TableLayout
     private lateinit var historyTable: TableLayout
     private lateinit var historyTitle: TextView
@@ -100,9 +99,6 @@ class MainActivity : Activity() {
         top.addView(startButton, weighted(0.6f))
         triggerText = TextView(this).apply { text = "TRIG —"; textSize = 16f; setTextColor(red); gravity = Gravity.CENTER; setPadding(8, 4, 8, 4) }
         top.addView(triggerText, weighted(0.8f))
-        top.addView(TextView(this).apply { text = "Фильтр ID"; textSize = 13f; setTextColor(Color.DKGRAY); gravity = Gravity.CENTER }, weighted(0.55f))
-        filterInput = EditText(this).apply { textSize = 14f; isSingleLine = true; hint = "например 7E1"; setPadding(8, 2, 8, 2) }
-        top.addView(filterInput, weighted(0.75f))
         top.addView(TextView(this).apply { text = "CAN"; gravity = Gravity.CENTER; setTextColor(Color.DKGRAY) }, weighted(0.3f))
         speedSelector = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("Auto", "125", "250", "500", "1000"))
@@ -130,8 +126,8 @@ class MainActivity : Activity() {
         val tableScroll = HorizontalScrollView(this)
         val verticalScroll = ScrollView(this)
         table = TableLayout(this).apply { isStretchAllColumns = false }
-        val headings = listOf("№", "ID", "Изм", "Имя блока", "DLC", "Data", "Частота", "Кол. кадров", "Время последнего кадра")
-        table.addView(makeRow(headings, true))
+        val headings = listOf("ID", "DLC", "Dif", "Name", "DLC", "Data", "Hz", "Frames", "Last fr")
+        table.addView(makeRow(headings, true, 15f))
         verticalScroll.addView(table)
         tableScroll.addView(verticalScroll)
         left.addView(tableScroll, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -142,13 +138,12 @@ class MainActivity : Activity() {
         right.addView(historyTitle)
         val historyScroll = ScrollView(this)
         historyTable = TableLayout(this)
-        historyTable.addView(makeRow(listOf("№", "Время от старта", "DLC", "Data"), true))
+        historyTable.addView(makeRow(listOf("№", "Time", "Data"), true))
         historyScroll.addView(historyTable)
         right.addView(historyScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         main.addView(right, LinearLayout.LayoutParams(0, -1, 1f))
         root.addView(main, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
-        filterInput.addTextChangedListener(SimpleTextWatcher { renderRows() })
     }
 
     private fun weighted(w: Float) = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, w).apply { setMargins(3, 2, 3, 2) }
@@ -156,11 +151,11 @@ class MainActivity : Activity() {
         text = label; textSize = 13f; minHeight = 38; setPadding(5, 0, 5, 0)
         setOnClickListener { clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 50); action() }
     }
-    private fun makeRow(values: List<String>, header: Boolean): TableRow {
+    private fun makeRow(values: List<String>, header: Boolean, fontSize: Float = 12f): TableRow {
         val row = TableRow(this)
         values.forEachIndexed { index, value ->
             val cell = TextView(this).apply {
-                text = value; textSize = if (header) 12f else 12f
+                text = value; textSize = fontSize
                 setTextColor(if (header) Color.WHITE else Color.rgb(25, 40, 60))
                 if (header) { setBackgroundColor(blue); setTypeface(null, Typeface.BOLD) }
                 else setBackgroundColor(Color.WHITE)
@@ -240,9 +235,15 @@ class MainActivity : Activity() {
             line == "AUTO_SCAN_FAILED" -> { speedStatus.text = "CAN: не определена"; setStatus("Автоопределение не удалось") }
             line.startsWith("ERR", true) -> setStatus("Arduino: $line")
             line == "BUTTON_PRESS" -> if (receiving) {
-                triggerText.text = "TRIG ${formatElapsed(SystemClock.elapsedRealtime() - startElapsedRealtime)}"
+                val stamp = SystemClock.elapsedRealtime()
+                triggerText.text = "TRIG ${formatElapsed(stamp - startElapsedRealtime)}"
                 clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
                 status.text = "Нажатие внешней кнопки"
+                frames.forEach { (id, frame) ->
+                    frame.history.add(stamp to List(8) { "◇" })
+                    if (frame.history.size > 500) repeat(100) { if (frame.history.isNotEmpty()) frame.history.removeAt(0) }
+                    if (selectedId == id) renderHistory(id)
+                }
             }
             else -> parseFrame(line)?.let { (id, data) -> if (receiving) acceptFrame(id, data) }
         }
@@ -276,29 +277,14 @@ class MainActivity : Activity() {
         if (!receiving && selectedId == id) renderHistory(id)
     }
 
-    // Full rebuild only when the filter changes; incoming CAN frames update one row.
-    private fun renderRows() {
-        for (row in rowViews.values) table.removeView(row)
-        rowViews.clear()
-        frames.keys.forEach { updateRow(it) }
-    }
-
     private fun updateRow(id: String) {
         val f = frames[id] ?: return
-        val filter = filterInput.text.toString().trim().uppercase()
         val existing = rowViews[id]
-        if (filter.isNotEmpty() && !id.contains(filter)) {
-            if (existing != null) {
-                table.removeView(existing)
-                rowViews.remove(id)
-            }
-            return
-        }
         val elapsed = formatElapsed(f.last - connectionElapsedRealtime)
         val values = listOf(f.number.toString(), "0x$id", if (id in changedIds) "◆" else "",
             blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
             "%.1f Hz".format(f.hz), f.count.toString(), elapsed)
-        val row = existing ?: makeRow(values, false).also { created ->
+        val row = existing ?: makeRow(values, false, 15f).also { created ->
             created.setOnClickListener { selectedId = id; if (!receiving) renderHistory(id) }
             created.setOnLongClickListener { editBlockName(id); true }
             table.addView(created)
@@ -326,7 +312,7 @@ class MainActivity : Activity() {
         val f = frames[id] ?: return
         f.history.takeLast(200).forEachIndexed { index, entry ->
             val elapsed = formatElapsed(entry.first - connectionElapsedRealtime)
-            historyTable.addView(makeRow(listOf((index + 1).toString(), elapsed, entry.second.size.toString(), entry.second.joinToString(" ")), false))
+            historyTable.addView(makeRow(listOf((index + 1).toString(), elapsed, entry.second.joinToString(" ")), false))
         }
     }
 
@@ -361,9 +347,4 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    private class SimpleTextWatcher(val changed: () -> Unit) : android.text.TextWatcher {
-        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { changed() }
-        override fun afterTextChanged(s: android.text.Editable?) {}
-    }
 }
