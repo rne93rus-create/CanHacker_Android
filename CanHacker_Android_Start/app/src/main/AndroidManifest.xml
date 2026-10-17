@@ -2,11 +2,13 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
     <application
         android:allowBackup="false"
-        android:label="CanHacker START"
+        android:label="CanHacker"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
