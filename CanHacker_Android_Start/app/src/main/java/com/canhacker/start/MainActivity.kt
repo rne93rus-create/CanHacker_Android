@@ -31,7 +31,6 @@ class MainActivity : Activity() {
     private lateinit var speedSelector: Spinner
     private lateinit var connectButton: Button
     private lateinit var startButton: Button
-    private lateinit var resetButton: Button
     private lateinit var triggerText: TextView
     private lateinit var table: TableLayout
     private lateinit var historyTable: TableLayout
@@ -49,7 +48,6 @@ class MainActivity : Activity() {
     private val rowViews = mutableMapOf<String, TableRow>()
     private val previousData = mutableMapOf<String, List<String>>()
     private val changedIds = mutableSetOf<String>()
-    private var highlightedId: String? = null
     private val blockNames = mutableMapOf<String, String>()
     private val clickTone by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
     private val rxBuffer = StringBuilder()
@@ -99,8 +97,6 @@ class MainActivity : Activity() {
         top.addView(connectButton, weighted(0.8f))
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
         top.addView(startButton, weighted(0.6f))
-        resetButton = button("Reset") { resetMemory() }.apply { isEnabled = false }
-        top.addView(resetButton, weighted(0.55f))
         triggerText = TextView(this).apply { text = "TRIG —"; textSize = 16f; setTextColor(red); gravity = Gravity.CENTER; setPadding(8, 4, 8, 4) }
         top.addView(triggerText, weighted(0.8f))
         top.addView(TextView(this).apply { text = "CAN"; gravity = Gravity.CENTER; setTextColor(Color.DKGRAY) }, weighted(0.3f))
@@ -163,7 +159,7 @@ class MainActivity : Activity() {
                 setTextColor(if (header) Color.WHITE else Color.rgb(25, 40, 60))
                 if (header) { setBackgroundColor(blue); setTypeface(null, Typeface.BOLD) }
                 else setBackgroundColor(Color.WHITE)
-                setPadding(7, 7, 7, 7); gravity = Gravity.CENTER_VERTICAL
+                setPadding(11, 7, 11, 7); gravity = Gravity.CENTER_VERTICAL
                 minWidth = when (index) { 0 -> 35; 1 -> 65; 2 -> 40; 3 -> 75; 4 -> 35; 5 -> 155; 6 -> 65; 7 -> 70; else -> 110 }
             }
             row.addView(cell)
@@ -190,7 +186,7 @@ class MainActivity : Activity() {
             newPort.open(connection)
             newPort.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             port = newPort; connected = true; receiving = false
-            connectButton.text = "Отключить"; startButton.text = "Старт"; startButton.isEnabled = true; resetButton.isEnabled = true
+            connectButton.text = "Отключить"; startButton.text = "Старт"; startButton.isEnabled = true
             connectionElapsedRealtime = SystemClock.elapsedRealtime()
             synchronized(rxBuffer) { rxBuffer.clear() }
             startReader(newPort)
@@ -222,7 +218,7 @@ class MainActivity : Activity() {
         try {
             if (receiving) {
                 p.write("STOP\n".toByteArray(Charsets.US_ASCII), 1000)
-                receiving = false; startButton.text = "Старт"; resetMemory(); setStatus("Приём остановлен, память очищена")
+                receiving = false; startButton.text = "Старт"; setStatus("Приём остановлен")
             } else {
                 p.write("START\n".toByteArray(Charsets.US_ASCII), 1000)
                 receiving = true; startElapsedRealtime = SystemClock.elapsedRealtime()
@@ -244,7 +240,7 @@ class MainActivity : Activity() {
                 clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 180)
                 status.text = "Нажатие внешней кнопки"
                 frames.forEach { (id, frame) ->
-                    frame.history.add(stamp to List(8) { "▲" })
+                    frame.history.add(stamp to List(8) { "◇" })
                     if (frame.history.size > 500) repeat(100) { if (frame.history.isNotEmpty()) frame.history.removeAt(0) }
                     if (selectedId == id) renderHistory(id)
                 }
@@ -274,7 +270,7 @@ class MainActivity : Activity() {
         item.history.add(now to data.toList())
         if (item.history.size > 500) repeat(100) { if (item.history.isNotEmpty()) item.history.removeAt(0) }
         item.hz = if (now - item.first > 50) (item.count - 1) * 1000.0 / (now - item.first) else 0.0
-        if (changed) { item.changedAt = now }
+        if (changed) { changedIds.add(id); item.changedAt = now }
         rxCount++
         countText.text = "Кадров: $rxCount"
         updateRow(id)
@@ -289,13 +285,7 @@ class MainActivity : Activity() {
             blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
             "%.1f Hz".format(f.hz), f.count.toString(), elapsed)
         val row = existing ?: makeRow(values, false, 15f).also { created ->
-            created.setOnClickListener {
-                if (!receiving) {
-                    highlightedId = id
-                    refreshRowHighlights()
-                    renderHistory(id)
-                }
-            }
+            created.setOnClickListener { selectedId = id; if (!receiving) renderHistory(id) }
             created.setOnLongClickListener { editBlockName(id); true }
             table.addView(created)
             rowViews[id] = created
@@ -303,19 +293,8 @@ class MainActivity : Activity() {
         values.forEachIndexed { index, value -> (row.getChildAt(index) as TextView).text = value }
         for (i in 0 until row.childCount) {
             val cell = row.getChildAt(i) as TextView
-            cell.setBackgroundColor(if (id == highlightedId) Color.rgb(255, 210, 210) else Color.WHITE)
-            cell.setTextColor(Color.rgb(25, 40, 60))
-        }
-    }
-
-    private fun refreshRowHighlights() {
-        frames.keys.forEach { id ->
-            val row = rowViews[id] ?: return@forEach
-            for (i in 0 until row.childCount) {
-                val cell = row.getChildAt(i) as TextView
-                cell.setBackgroundColor(if (id == highlightedId) Color.rgb(255, 210, 210) else Color.WHITE)
-                cell.setTextColor(Color.rgb(25, 40, 60))
-            }
+            cell.setBackgroundColor(Color.WHITE)
+            cell.setTextColor(if (id in changedIds && i == 2) red else Color.rgb(25, 40, 60))
         }
     }
 
@@ -357,24 +336,8 @@ class MainActivity : Activity() {
         ioManager = null
         try { port?.close() } catch (_: Exception) {}
         port = null
-        connectButton.text = "Подключить"; startButton.text = "Старт"; startButton.isEnabled = false; resetButton.isEnabled = false
+        connectButton.text = "Подключить"; startButton.text = "Старт"; startButton.isEnabled = false
         speedStatus.text = "CAN: —"; setStatus("Отключено")
-    }
-
-    private fun resetMemory() {
-        frames.clear()
-        rowViews.clear()
-        previousData.clear()
-        changedIds.clear()
-        highlightedId = null
-        blockNames.clear()
-        selectedId = null
-        rxCount = 0
-        table.removeViews(1, (table.childCount - 1).coerceAtLeast(0))
-        historyTable.removeViews(1, (historyTable.childCount - 1).coerceAtLeast(0))
-        historyTitle.text = "История ID —"
-        countText.text = "Кадров: 0"
-        triggerText.text = "TRIG —"
     }
 
     private fun formatElapsed(ms: Long): String {
