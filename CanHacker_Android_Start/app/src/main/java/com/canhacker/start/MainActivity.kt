@@ -50,7 +50,6 @@ class MainActivity : Activity() {
     private val changedIds = mutableSetOf<String>()
     private val blockNames = mutableMapOf<String, String>()
     private val clickTone by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
-    private val triggerTone by lazy { ToneGenerator(AudioManager.STREAM_ALARM, 100) }
     private val rxBuffer = StringBuilder()
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
     private val bg = Color.rgb(244, 247, 252)
@@ -93,12 +92,13 @@ class MainActivity : Activity() {
     private fun buildUi() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg); setPadding(8, 6, 8, 6) }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(TextView(this).apply { text = "CanHacker  1.3.24"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
-        val connectionControls = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        top.addView(TextView(this).apply { text = "CanHacker  2.0"; textSize = 21f; setTypeface(null, Typeface.BOLD); setTextColor(blue) }, LinearLayout.LayoutParams(0, -2, 1.2f))
+        val resetButton = button("Reset") { resetMemory() }.apply {
+            setBackgroundColor(Color.rgb(255, 190, 190))
+        }
+        top.addView(resetButton, weighted(0.55f))
         connectButton = button("Подключить") { if (connected) disconnect() else findDevice() }
-        connectionControls.addView(connectButton, LinearLayout.LayoutParams(-1, -2))
-        connectionControls.addView(button("Reset") { resetMemory() }, LinearLayout.LayoutParams(-1, -2))
-        top.addView(connectionControls, weighted(0.8f))
+        top.addView(connectButton, weighted(0.8f))
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
         top.addView(startButton, weighted(0.6f))
         triggerText = TextView(this).apply { text = "TRIG —"; textSize = 16f; setTextColor(red); gravity = Gravity.CENTER; setPadding(8, 4, 8, 4) }
@@ -241,8 +241,8 @@ class MainActivity : Activity() {
             line == "BUTTON_PRESS" -> if (receiving) {
                 val stamp = SystemClock.elapsedRealtime()
                 triggerText.text = "TRIG ${formatElapsed(stamp - startElapsedRealtime)}"
-                triggerTone.stopTone()
-                triggerTone.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
+                clickTone.stopTone()
+                clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
                 status.text = "Нажатие внешней кнопки"
                 frames.forEach { (id, frame) ->
                     frame.history.add(stamp to List(frame.data.size) { "--" })
