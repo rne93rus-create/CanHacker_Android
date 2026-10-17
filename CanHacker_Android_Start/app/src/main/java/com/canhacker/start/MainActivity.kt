@@ -10,12 +10,11 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
@@ -25,13 +24,18 @@ class MainActivity : Activity() {
     private lateinit var usbManager: UsbManager
     private lateinit var status: TextView
     private lateinit var speedStatus: TextView
+    private lateinit var frameCounter: TextView
+    private lateinit var byteCounter: TextView
+    private lateinit var connectButton: Button
     private lateinit var startButton: Button
+    private lateinit var framesText: TextView
     private var port: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
     private var connected = false
-    private var currentCanSpeed: Int? = null
+    private var receiving = false
+    private var frameCount = 0L
+    private var byteCount = 0L
     private val rxBuffer = StringBuilder()
-    private val handler = Handler(Looper.getMainLooper())
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
 
     private val permissionReceiver = object : BroadcastReceiver() {
@@ -58,31 +62,51 @@ class MainActivity : Activity() {
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(24, 36, 24, 24)
+            setPadding(20, 24, 20, 16)
         }
         status = TextView(this).apply {
-            text = "Нажми START для подключения Arduino Nano"
-            textSize = 18f
+            text = "Отключено"
+            textSize = 16f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, 10)
         }
-        layout.addView(status, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        layout.addView(status, matchWrap())
 
         speedStatus = TextView(this).apply {
             text = "Скорость CAN: —"
             textSize = 16f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 24)
+            setPadding(0, 0, 0, 12)
         }
-        layout.addView(speedStatus, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        layout.addView(speedStatus, matchWrap())
 
-        startButton = makeButton("START") {
-            if (connected) stopConnection() else findDevice()
+        connectButton = makeButton("Подключить") {
+            if (connected) disconnect() else findDevice()
         }
+        layout.addView(connectButton)
+
+        startButton = makeButton("Старт") { toggleReceiving() }
+        startButton.isEnabled = false
         layout.addView(startButton)
+
+        val counters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        frameCounter = TextView(this).apply { text = "Кадры: 0"; textSize = 15f }
+        byteCounter = TextView(this).apply { text = "Байты: 0"; textSize = 15f; gravity = Gravity.END }
+        counters.addView(frameCounter, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        counters.addView(byteCounter, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        layout.addView(counters)
+
+        val scroll = ScrollView(this)
+        framesText = TextView(this).apply {
+            textSize = 13f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(4, 8, 4, 8)
+            text = ""
+        }
+        scroll.addView(framesText)
+        layout.addView(scroll, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
 
         setContentView(layout)
         val filter = IntentFilter(actionUsbPermission)
@@ -94,14 +118,18 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun matchWrap() = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+    )
+
     private fun makeButton(label: String, action: () -> Unit): Button =
         Button(this).apply {
             text = label
-            textSize = 18f
+            textSize = 16f
             setOnClickListener { action() }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 12 }
+            ).apply { bottomMargin = 6 }
         }
 
     private fun findDevice() {
@@ -127,8 +155,6 @@ class MainActivity : Activity() {
             val driver = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
                 .firstOrNull { it.device.deviceId == device.deviceId }
                 ?: run { setStatus("Драйвер USB-UART не найден"); return }
-
-            closePort()
             val connection = usbManager.openDevice(driver.device)
             if (connection == null) {
                 setStatus("Не удалось открыть USB")
@@ -139,102 +165,107 @@ class MainActivity : Activity() {
             newPort.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             port = newPort
             synchronized(rxBuffer) { rxBuffer.clear() }
+            connected = true
+            receiving = false
+            connectButton.text = "Отключить"
+            startButton.text = "Старт"
+            startButton.isEnabled = true
+            speedStatus.text = "Скорость CAN: ожидание ответа Arduino..."
+            setStatus("USB подключён")
+            startReader(newPort)
+        } catch (e: Exception) {
+            disconnect()
+            setStatus("Ошибка USB: ${e.message}")
+        }
+    }
 
-            ioManager = SerialInputOutputManager(newPort, object : SerialInputOutputManager.Listener {
-                override fun onNewData(data: ByteArray) {
-                    val completeLines = mutableListOf<String>()
-                    synchronized(rxBuffer) {
-                        for (byte in data) {
-                            val char = byte.toInt().toChar()
-                            if (char == '\n' || char == '\r') {
-                                if (rxBuffer.isNotEmpty()) {
-                                    completeLines.add(rxBuffer.toString())
-                                    rxBuffer.clear()
-                                }
-                            } else if (rxBuffer.length < 512) {
-                                rxBuffer.append(char)
-                            } else {
+    private fun startReader(serialPort: UsbSerialPort) {
+        ioManager?.stop()
+        ioManager = SerialInputOutputManager(serialPort, object : SerialInputOutputManager.Listener {
+            override fun onNewData(data: ByteArray) {
+                val lines = mutableListOf<String>()
+                synchronized(rxBuffer) {
+                    for (b in data) {
+                        val c = b.toInt().toChar()
+                        if (c == '\n' || c == '\r') {
+                            if (rxBuffer.isNotEmpty()) {
+                                lines.add(rxBuffer.toString())
                                 rxBuffer.clear()
                             }
+                        } else if (rxBuffer.length < 512) {
+                            rxBuffer.append(c)
+                        } else {
+                            rxBuffer.clear()
                         }
                     }
-                    if (completeLines.isNotEmpty()) runOnUiThread {
-                        for (line in completeLines) handleLine(line.trim())
-                    }
                 }
-                override fun onRunError(e: Exception) {
-                    runOnUiThread { setStatus("Ошибка порта: ${e.message}") }
-                }
-            }).also { it.start() }
+                if (lines.isNotEmpty()) runOnUiThread { lines.forEach { handleLine(it.trim()) } }
+            }
+            override fun onRunError(e: Exception) {
+                runOnUiThread { setStatus("Ошибка порта: ${e.message}") }
+            }
+        }).also { it.start() }
+    }
 
-            connected = true
-            startButton.text = "STOP"
-            startButton.isEnabled = true
-            currentCanSpeed = null
-            speedStatus.text = "Скорость CAN: определение..."
-            setStatus("Arduino подключена • приём CAN активен")
-            // As in the Python app, wait for the Nano to finish rebooting, then request 500 kbit/s.
-            handler.postDelayed({
-                try {
-                    port?.write("CAN SPEED 500\n".toByteArray(Charsets.US_ASCII), 1000)
-                } catch (e: Exception) {
-                    setStatus("Ошибка команды скорости: ${e.message}")
-                }
-            }, 800)
+    private fun toggleReceiving() {
+        val p = port ?: return
+        try {
+            if (receiving) {
+                p.write("STOP\n".toByteArray(Charsets.US_ASCII), 1000)
+                receiving = false
+                startButton.text = "Старт"
+                setStatus("Приём остановлен • USB подключён")
+            } else {
+                p.write("START\n".toByteArray(Charsets.US_ASCII), 1000)
+                receiving = true
+                startButton.text = "Стоп"
+                setStatus("Приём CAN запущен")
+            }
         } catch (e: Exception) {
-            closePort()
-            setStatus("Ошибка: ${e.message}")
+            setStatus("Ошибка команды: ${e.message}")
         }
     }
 
     private fun handleLine(line: String) {
-        val upper = line.uppercase()
         when {
-            upper.startsWith("CAN_SPEED=") || upper.startsWith("CAN_SPEED:") ||
-                upper.startsWith("SPEED=") || upper.startsWith("BITRATE=") -> {
-                val value = line.substringAfterAny("=", ":").trim()
-                val numeric = value.toIntOrNull()
-                currentCanSpeed = numeric
-                speedStatus.text = if (numeric != null) {
-                    "Скорость CAN: ${numeric} кбит/с"
-                } else {
-                    "Скорость CAN: $value"
+            line.startsWith("CAN_SPEED=", true) -> {
+                val value = line.substringAfter('=').trim()
+                speedStatus.text = "Скорость CAN: ${value} кбит/с"
+            }
+            line.startsWith("ERR", true) -> setStatus("Arduino: $line")
+            line.startsWith("ID=", true) -> {
+                if (receiving) {
+                    frameCount++
+                    val data = Regex("DATA=([0-9A-Fa-f ]*)").find(line)?.groupValues?.get(1)?.trim().orEmpty()
+                    val bytes = if (data.isBlank()) 0 else data.split(Regex("\\s+")).size
+                    byteCount += bytes
+                    frameCounter.text = "Кадры: $frameCount"
+                    byteCounter.text = "Байты: $byteCount"
+                    framesText.append(line + "\n")
                 }
             }
-            upper == "AUTO_SCAN_START" -> speedStatus.text = "Скорость CAN: автоопределение..."
-            upper == "AUTO_SCAN_FAILED" -> speedStatus.text = "Скорость CAN: не определена"
-            upper.startsWith("ERR") -> setStatus("Arduino: $line")
-            upper.startsWith("ID=") && connected -> setStatus("CAN: $line")
         }
     }
 
-    private fun String.substringAfterAny(vararg delimiters: String): String {
-        val index = delimiters.map { indexOf(it) }.filter { it >= 0 }.minOrNull() ?: return this
-        return substring(index + 1)
-    }
-
-    private fun stopConnection() {
-        closePort()
-        speedStatus.text = "Скорость CAN: —"
-        setStatus("Отключено")
-    }
-
-    private fun closePort() {
+    private fun disconnect() {
+        try { port?.write("STOP\n".toByteArray(Charsets.US_ASCII), 300) } catch (_: Exception) {}
+        receiving = false
         connected = false
-        handler.removeCallbacksAndMessages(null)
-        startButton.text = "START"
-        startButton.isEnabled = true
         try { ioManager?.stop() } catch (_: Exception) {}
         ioManager = null
         try { port?.close() } catch (_: Exception) {}
         port = null
-        synchronized(rxBuffer) { rxBuffer.clear() }
+        connectButton.text = "Подключить"
+        startButton.text = "Старт"
+        startButton.isEnabled = false
+        speedStatus.text = "Скорость CAN: —"
+        setStatus("Отключено")
     }
 
     private fun setStatus(message: String) { status.text = message }
 
     override fun onDestroy() {
-        closePort()
+        disconnect()
         try { unregisterReceiver(permissionReceiver) } catch (_: Exception) {}
         super.onDestroy()
     }
