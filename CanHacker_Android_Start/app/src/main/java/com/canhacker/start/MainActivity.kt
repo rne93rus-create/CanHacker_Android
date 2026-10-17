@@ -22,10 +22,12 @@ import com.hoho.android.usbserial.util.SerialInputOutputManager
 class MainActivity : Activity() {
     private lateinit var usbManager: UsbManager
     private lateinit var status: TextView
+    private lateinit var speedStatus: TextView
     private lateinit var startButton: Button
     private var port: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
     private var streaming = false
+    private var currentCanSpeed = 500
     private val rxBuffer = StringBuilder()
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
 
@@ -60,15 +62,25 @@ class MainActivity : Activity() {
             text = "Подключи Arduino Nano через USB OTG"
             textSize = 18f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 24)
+            setPadding(0, 0, 0, 16)
         }
         layout.addView(status, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
+        speedStatus = TextView(this).apply {
+            text = "Скорость CAN: —"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 24)
+        }
+        layout.addView(speedStatus, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
         layout.addView(makeButton("1. Подключить Arduino") { findDevice() })
-        startButton = makeButton("2. START") {
+        startButton = makeButton("STOP") {
             if (streaming) stopCapture() else startCapture()
         }
+        startButton.isEnabled = false
         layout.addView(startButton)
         layout.addView(makeButton("Отключить") {
             closePort()
@@ -157,9 +169,13 @@ class MainActivity : Activity() {
                     runOnUiThread { setStatus("Ошибка порта: ${e.message}") }
                 }
             }).also { it.start() }
-            streaming = false
-            startButton.text = "2. START"
-            setStatus("Arduino подключена • 115200, 8N1")
+
+            // The Nano firmware starts CAN reception automatically after initialization.
+            streaming = true
+            startButton.text = "STOP"
+            startButton.isEnabled = true
+            speedStatus.text = "Скорость CAN: ${currentCanSpeed} кбит/с"
+            setStatus("Arduino подключена • автоматический приём CAN")
         } catch (e: Exception) {
             setStatus("Ошибка: ${e.message}")
         }
@@ -170,15 +186,21 @@ class MainActivity : Activity() {
             line == "STARTED" -> {
                 streaming = true
                 startButton.text = "STOP"
+                startButton.isEnabled = true
                 setStatus("Приём CAN запущен")
             }
             line == "STOPPED" -> {
                 streaming = false
-                startButton.text = "2. START"
+                startButton.text = "START"
+                startButton.isEnabled = true
                 setStatus("Приём CAN остановлен")
             }
+            line.startsWith("CAN_SPEED=") -> {
+                currentCanSpeed = line.substringAfter('=').toIntOrNull() ?: currentCanSpeed
+                speedStatus.text = "Скорость CAN: ${currentCanSpeed} кбит/с"
+            }
             line.startsWith("ERR") -> setStatus("Arduino: $line")
-            line == "READY" -> setStatus("Arduino готова • CAN 500 кбит/с")
+            line == "READY" -> setStatus("Arduino готова")
             line.startsWith("ID=") -> setStatus("CAN: $line")
         }
     }
@@ -193,8 +215,11 @@ class MainActivity : Activity() {
             return
         }
         try {
+            // Update the toggle immediately; do not depend on a possibly delayed serial reply.
+            streaming = command.startsWith("START")
+            startButton.text = if (streaming) "STOP" else "START"
             activePort.write(command.toByteArray(Charsets.US_ASCII), 1000)
-            setStatus("Ожидание ответа Arduino…")
+            setStatus(if (streaming) "Запуск приёма CAN…" else "Остановка приёма CAN…")
         } catch (e: Exception) {
             setStatus("Ошибка отправки: ${e.message}")
         }
@@ -202,7 +227,10 @@ class MainActivity : Activity() {
 
     private fun closePort() {
         streaming = false
-        startButton.text = "2. START"
+        if (::startButton.isInitialized) {
+            startButton.text = "START"
+            startButton.isEnabled = false
+        }
         try { ioManager?.stop() } catch (_: Exception) {}
         ioManager = null
         try { port?.close() } catch (_: Exception) {}
