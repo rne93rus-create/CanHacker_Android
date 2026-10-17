@@ -128,7 +128,7 @@ class MainActivity : Activity() {
         val tableScroll = HorizontalScrollView(this)
         val verticalScroll = ScrollView(this)
         table = TableLayout(this).apply { isStretchAllColumns = false }
-        val headings = listOf("N", "ID", "Dif", "Name", "DLC", "Data", "Hz", "Frames", "Last fr")
+        val headings = listOf("№", "ID", "Dif", "Name", "DLC", "Data", "Hz", "Frames", "Last fr")
         table.addView(makeRow(headings, true, 15f, 5))
         verticalScroll.addView(table)
         tableScroll.addView(verticalScroll)
