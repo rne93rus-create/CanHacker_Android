@@ -49,7 +49,7 @@ class MainActivity : Activity() {
     private val previousData = mutableMapOf<String, List<String>>()
     private val changedIds = mutableSetOf<String>()
     private val blockNames = mutableMapOf<String, String>()
-    private val clickTone by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
+    private val clickTone by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100) }
     private val rxBuffer = StringBuilder()
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
     private val bg = Color.rgb(244, 247, 252)
@@ -153,7 +153,7 @@ class MainActivity : Activity() {
     private fun weighted(w: Float) = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, w).apply { setMargins(3, 2, 3, 2) }
     private fun button(label: String, action: () -> Unit) = Button(this).apply {
         text = label; textSize = 13f; minHeight = 38; setPadding(5, 0, 5, 0)
-        setOnClickListener { clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 50); action() }
+        setOnClickListener { clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 100); action() }
     }
     private fun makeRow(values: List<String>, header: Boolean, fontSize: Float = 12f): TableRow {
         val row = TableRow(this)
@@ -241,7 +241,6 @@ class MainActivity : Activity() {
             line == "BUTTON_PRESS" -> if (receiving) {
                 val stamp = SystemClock.elapsedRealtime()
                 triggerText.text = "TRIG ${formatElapsed(stamp - startElapsedRealtime)}"
-                clickTone.stopTone()
                 clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 500)
                 status.text = "Нажатие внешней кнопки"
                 frames.forEach { (id, frame) ->
