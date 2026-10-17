@@ -10,6 +10,8 @@ import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -26,9 +28,10 @@ class MainActivity : Activity() {
     private lateinit var startButton: Button
     private var port: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
-    private var streaming = false
-    private var currentCanSpeed = 500
+    private var connected = false
+    private var currentCanSpeed: Int? = null
     private val rxBuffer = StringBuilder()
+    private val handler = Handler(Looper.getMainLooper())
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
 
     private val permissionReceiver = object : BroadcastReceiver() {
@@ -59,7 +62,7 @@ class MainActivity : Activity() {
             setPadding(24, 36, 24, 24)
         }
         status = TextView(this).apply {
-            text = "Подключи Arduino Nano через USB OTG"
+            text = "Нажми START для подключения Arduino Nano"
             textSize = 18f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 16)
@@ -76,16 +79,10 @@ class MainActivity : Activity() {
         layout.addView(speedStatus, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        layout.addView(makeButton("1. Подключить Arduino") { findDevice() })
         startButton = makeButton("START") {
-            if (streaming) stopCapture() else startCapture()
+            if (connected) stopConnection() else findDevice()
         }
-        startButton.isEnabled = false
         layout.addView(startButton)
-        layout.addView(makeButton("Отключить") {
-            closePort()
-            setStatus("Отключено")
-        })
 
         setContentView(layout)
         val filter = IntentFilter(actionUsbPermission)
@@ -170,63 +167,63 @@ class MainActivity : Activity() {
                 }
             }).also { it.start() }
 
-            streaming = false
-            startButton.text = "START"
+            connected = true
+            startButton.text = "STOP"
             startButton.isEnabled = true
-            speedStatus.text = "Скорость CAN: ${currentCanSpeed} кбит/с"
-            setStatus("Arduino подключена • нажми START")
+            currentCanSpeed = null
+            speedStatus.text = "Скорость CAN: определение..."
+            setStatus("Arduino подключена • приём CAN активен")
+            // As in the Python app, wait for the Nano to finish rebooting, then request 500 kbit/s.
+            handler.postDelayed({
+                try {
+                    port?.write("CAN SPEED 500\n".toByteArray(Charsets.US_ASCII), 1000)
+                } catch (e: Exception) {
+                    setStatus("Ошибка команды скорости: ${e.message}")
+                }
+            }, 800)
         } catch (e: Exception) {
+            closePort()
             setStatus("Ошибка: ${e.message}")
         }
     }
 
     private fun handleLine(line: String) {
+        val upper = line.uppercase()
         when {
-            line == "STARTED" -> {
-                streaming = true
-                startButton.text = "STOP"
-                startButton.isEnabled = true
-                setStatus("Приём CAN запущен")
+            upper.startsWith("CAN_SPEED=") || upper.startsWith("CAN_SPEED:") ||
+                upper.startsWith("SPEED=") || upper.startsWith("BITRATE=") -> {
+                val value = line.substringAfterAny("=", ":").trim()
+                val numeric = value.toIntOrNull()
+                currentCanSpeed = numeric
+                speedStatus.text = if (numeric != null) {
+                    "Скорость CAN: ${numeric} кбит/с"
+                } else {
+                    "Скорость CAN: $value"
+                }
             }
-            line == "STOPPED" -> {
-                streaming = false
-                startButton.text = "START"
-                startButton.isEnabled = true
-                setStatus("Приём CAN остановлен")
-            }
-            line.startsWith("CAN_SPEED=") -> {
-                currentCanSpeed = line.substringAfter('=').toIntOrNull() ?: currentCanSpeed
-                speedStatus.text = "Скорость CAN: ${currentCanSpeed} кбит/с"
-            }
-            line.startsWith("ERR") -> setStatus("Arduino: $line")
-            line == "READY" -> setStatus("Arduino готова")
-            line.startsWith("ID=") && streaming -> setStatus("CAN: $line")
+            upper == "AUTO_SCAN_START" -> speedStatus.text = "Скорость CAN: автоопределение..."
+            upper == "AUTO_SCAN_FAILED" -> speedStatus.text = "Скорость CAN: не определена"
+            upper.startsWith("ERR") -> setStatus("Arduino: $line")
+            upper.startsWith("ID=") && connected -> setStatus("CAN: $line")
         }
     }
 
-    private fun startCapture() = sendCommand("START\n")
-    private fun stopCapture() = sendCommand("STOP\n")
+    private fun String.substringAfterAny(vararg delimiters: String): String {
+        val index = delimiters.map { indexOf(it) }.filter { it >= 0 }.minOrNull() ?: return this
+        return substring(index + 1)
+    }
 
-    private fun sendCommand(command: String) {
-        val activePort = port
-        if (activePort == null) {
-            setStatus("Сначала нажми «Подключить Arduino»")
-            return
-        }
-        try {
-            activePort.write(command.toByteArray(Charsets.US_ASCII), 1000)
-            setStatus(if (command.startsWith("START")) "Запуск приёма CAN…" else "Остановка приёма CAN…")
-        } catch (e: Exception) {
-            setStatus("Ошибка отправки: ${e.message}")
-        }
+    private fun stopConnection() {
+        closePort()
+        speedStatus.text = "Скорость CAN: —"
+        setStatus("Отключено")
     }
 
     private fun closePort() {
-        streaming = false
-        if (::startButton.isInitialized) {
-            startButton.text = "START"
-            startButton.isEnabled = false
-        }
+        connected = false
+        handler.removeCallbacksAndMessages(null)
+        startButton.text = "START"
+        startButton.isEnabled = true
         try { ioManager?.stop() } catch (_: Exception) {}
         ioManager = null
         try { port?.close() } catch (_: Exception) {}
