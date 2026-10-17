@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private var port: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
     private var streaming = false
+    private val rxBuffer = StringBuilder()
     private val actionUsbPermission = "com.canhacker.start.USB_PERMISSION"
 
     private val permissionReceiver = object : BroadcastReceiver() {
@@ -75,7 +76,6 @@ class MainActivity : Activity() {
         })
 
         setContentView(layout)
-
         val filter = IntentFilter(actionUsbPermission)
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(permissionReceiver, filter, RECEIVER_NOT_EXPORTED)
@@ -129,23 +129,28 @@ class MainActivity : Activity() {
             newPort.open(connection)
             newPort.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             port = newPort
+            synchronized(rxBuffer) { rxBuffer.clear() }
+
             ioManager = SerialInputOutputManager(newPort, object : SerialInputOutputManager.Listener {
                 override fun onNewData(data: ByteArray) {
-                    val received = String(data, Charsets.US_ASCII)
-                    runOnUiThread {
-                        when {
-                            received.contains("STARTED") -> {
-                                streaming = true
-                                startButton.text = "STOP"
-                                setStatus("Приём CAN запущен")
+                    val completeLines = mutableListOf<String>()
+                    synchronized(rxBuffer) {
+                        for (byte in data) {
+                            val char = byte.toInt().toChar()
+                            if (char == '\n' || char == '\r') {
+                                if (rxBuffer.isNotEmpty()) {
+                                    completeLines.add(rxBuffer.toString())
+                                    rxBuffer.clear()
+                                }
+                            } else if (rxBuffer.length < 512) {
+                                rxBuffer.append(char)
+                            } else {
+                                rxBuffer.clear()
                             }
-                            received.contains("STOPPED") -> {
-                                streaming = false
-                                startButton.text = "2. START"
-                                setStatus("Приём CAN остановлен")
-                            }
-                            received.contains("ERR") -> setStatus("Arduino: ${received.trim()}")
                         }
+                    }
+                    if (completeLines.isNotEmpty()) runOnUiThread {
+                        for (line in completeLines) handleLine(line.trim())
                     }
                 }
                 override fun onRunError(e: Exception) {
@@ -160,6 +165,24 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun handleLine(line: String) {
+        when {
+            line == "STARTED" -> {
+                streaming = true
+                startButton.text = "STOP"
+                setStatus("Приём CAN запущен")
+            }
+            line == "STOPPED" -> {
+                streaming = false
+                startButton.text = "2. START"
+                setStatus("Приём CAN остановлен")
+            }
+            line.startsWith("ERR") -> setStatus("Arduino: $line")
+            line == "READY" -> setStatus("Arduino готова • CAN 500 кбит/с")
+            line.startsWith("ID=") -> setStatus("CAN: $line")
+        }
+    }
+
     private fun startCapture() = sendCommand("START\n")
     private fun stopCapture() = sendCommand("STOP\n")
 
@@ -171,7 +194,7 @@ class MainActivity : Activity() {
         }
         try {
             activePort.write(command.toByteArray(Charsets.US_ASCII), 1000)
-            setStatus("Команда отправлена: ${command.trim()}")
+            setStatus("Ожидание ответа Arduino…")
         } catch (e: Exception) {
             setStatus("Ошибка отправки: ${e.message}")
         }
@@ -184,11 +207,10 @@ class MainActivity : Activity() {
         ioManager = null
         try { port?.close() } catch (_: Exception) {}
         port = null
+        synchronized(rxBuffer) { rxBuffer.clear() }
     }
 
-    private fun setStatus(message: String) {
-        status.text = message
-    }
+    private fun setStatus(message: String) { status.text = message }
 
     override fun onDestroy() {
         closePort()
