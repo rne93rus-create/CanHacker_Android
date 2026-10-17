@@ -1,10 +1,10 @@
-
 name: Build CanHacker APK
 
 on:
   workflow_dispatch:
   push:
     paths:
+      - 'CanHacker_Android_Start/**'
       - '.github/workflows/main.yml'
 
 jobs:
@@ -21,15 +21,12 @@ jobs:
           java-version: '17'
 
       - name: Build APK
-
-      
         run: |
           cd CanHacker_Android_Start
           gradle assembleDebug
 
-        
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: CanHacker-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: CanHacker_Android_Start/app/build/outputs/apk/debug/*.apk
