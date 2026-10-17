@@ -96,9 +96,9 @@ class MainActivity : Activity() {
         val resetButton = button("Reset") { resetMemory() }.apply {
             setBackgroundColor(Color.rgb(255, 190, 190))
         }
-        top.addView(resetButton, weighted(0.55f))
+        top.addView(resetButton, weighted(0.55f).apply { height = dp(48) })
         connectButton = button("Подключить") { if (connected) disconnect() else findDevice() }
-        top.addView(connectButton, weighted(0.8f))
+        top.addView(connectButton, weighted(0.8f).apply { height = dp(48) })
         startButton = button("Старт") { toggleReceiving() }.apply { isEnabled = false }
         top.addView(startButton, weighted(0.6f))
         triggerText = TextView(this).apply { text = "TRIG —"; textSize = 16f; setTextColor(red); gravity = Gravity.CENTER; setPadding(8, 4, 8, 4) }
@@ -150,6 +150,7 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
     private fun weighted(w: Float) = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, w).apply { setMargins(3, 2, 3, 2) }
     private fun button(label: String, action: () -> Unit) = Button(this).apply {
         text = label; textSize = 13f; minHeight = 38; setPadding(5, 0, 5, 0)
