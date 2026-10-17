@@ -15,7 +15,6 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
@@ -32,7 +31,12 @@ class MainActivity : Activity() {
     private val permissionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == actionUsbPermission) {
-                val device = intent.getParcelableExtra<UsbDevice>(UsbManager.EXTRA_DEVICE)
+                val device = if (Build.VERSION.SDK_INT >= 33) {
+                    intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+                }
                 if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false) && device != null) {
                     openDevice(device)
                 } else {
@@ -97,8 +101,7 @@ class MainActivity : Activity() {
             setStatus("USB-UART не найден. Проверь OTG и кабель.")
             return
         }
-        val driver = drivers[0]
-        val device = driver.device
+        val device = drivers[0].device
         if (!usbManager.hasPermission(device)) {
             val intent = PendingIntent.getBroadcast(
                 this, 0, Intent(actionUsbPermission),
@@ -128,22 +131,20 @@ class MainActivity : Activity() {
             port = newPort
             ioManager = SerialInputOutputManager(newPort, object : SerialInputOutputManager.Listener {
                 override fun onNewData(data: ByteArray) {
-                    val received = String(data, Charsets.US_ASCII).trim()
-                    if (received.isNotEmpty()) {
-                        runOnUiThread {
-                            when {
-                                received.contains("STARTED") -> {
-                                    streaming = true
-                                    startButton.text = "STOP"
-                                    setStatus("Приём CAN запущен")
-                                }
-                                received.contains("STOPPED") -> {
-                                    streaming = false
-                                    startButton.text = "2. START"
-                                    setStatus("Приём CAN остановлен")
-                                }
-                                received.contains("ERR") -> setStatus("Arduino: $received")
+                    val received = String(data, Charsets.US_ASCII)
+                    runOnUiThread {
+                        when {
+                            received.contains("STARTED") -> {
+                                streaming = true
+                                startButton.text = "STOP"
+                                setStatus("Приём CAN запущен")
                             }
+                            received.contains("STOPPED") -> {
+                                streaming = false
+                                startButton.text = "2. START"
+                                setStatus("Приём CAN остановлен")
+                            }
+                            received.contains("ERR") -> setStatus("Arduino: ${received.trim()}")
                         }
                     }
                 }
@@ -159,8 +160,8 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startCapture() = sendCommand("START\\n")
-    private fun stopCapture() = sendCommand("STOP\\n")
+    private fun startCapture() = sendCommand("START\n")
+    private fun stopCapture() = sendCommand("STOP\n")
 
     private fun sendCommand(command: String) {
         val activePort = port
