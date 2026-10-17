@@ -86,9 +86,9 @@ class MainActivity : Activity() {
             adapter = ArrayAdapter(
                 this@MainActivity,
                 android.R.layout.simple_spinner_dropdown_item,
-                listOf("125", "250", "500", "1000")
+                listOf("Auto", "125", "250", "500", "1000")
             )
-            setSelection(2)
+            setSelection(3)
             setOnTouchListener { _, _ -> clickTone.startTone(ToneGenerator.TONE_PROP_BEEP, 45); false }
             onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
@@ -249,6 +249,14 @@ class MainActivity : Activity() {
                 val value = line.substringAfter('=').trim()
                 speedStatus.text = "Скорость CAN: ${value} кбит/с"
             }
+            line.equals("AUTO_SCAN_START", true) -> {
+                speedStatus.text = "Скорость CAN: автоопределение..."
+                setStatus("Arduino определяет скорость CAN")
+            }
+            line.equals("AUTO_SCAN_FAILED", true) -> {
+                speedStatus.text = "Скорость CAN: не определена"
+                setStatus("Автоопределение CAN не удалось")
+            }
             line.startsWith("ERR", true) -> {
                 setStatus("Arduino: $line")
                 speedStatus.text = "Скорость CAN: ошибка настройки"
@@ -262,8 +270,14 @@ class MainActivity : Activity() {
     private fun setCanSpeed(rate: String) {
         val p = port ?: return
         try {
-            p.write("CAN SPEED $rate\n".toByteArray(Charsets.US_ASCII), 1000)
-            speedStatus.text = "Скорость CAN: настройка $rate кбит/с..."
+            if (rate.equals("Auto", ignoreCase = true)) {
+                p.write("CAN SPEED AUTO\n".toByteArray(Charsets.US_ASCII), 1000)
+                speedStatus.text = "Скорость CAN: автоопределение..."
+                setStatus("Запущено автоопределение скорости CAN")
+            } else {
+                p.write("CAN SPEED $rate\n".toByteArray(Charsets.US_ASCII), 1000)
+                speedStatus.text = "Скорость CAN: настройка $rate кбит/с..."
+            }
         } catch (e: Exception) {
             setStatus("Ошибка скорости CAN: ${e.message}")
         }
