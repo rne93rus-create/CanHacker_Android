@@ -162,7 +162,7 @@ class MainActivity : Activity() {
                 setTextColor(if (header) Color.WHITE else Color.rgb(25, 40, 60))
                 if (header) { setBackgroundColor(blue); setTypeface(null, Typeface.BOLD) }
                 else setBackgroundColor(Color.WHITE)
-                setPadding(11, 7, 11, 7); gravity = Gravity.CENTER_VERTICAL
+                setPadding(11, 7, if (index == 0) 27 else 11, 7); gravity = Gravity.CENTER_VERTICAL
                 minWidth = when (index) { 0 -> 35; 1 -> 65; 2 -> 40; 3 -> 75; 4 -> 35; 5 -> 155; 6 -> 65; 7 -> 70; else -> 110 }
             }
             row.addView(cell)
