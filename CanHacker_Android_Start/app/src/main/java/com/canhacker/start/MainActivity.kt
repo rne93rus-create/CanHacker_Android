@@ -49,6 +49,7 @@ class MainActivity : Activity() {
     private val rowViews = mutableMapOf<String, TableRow>()
     private val previousData = mutableMapOf<String, List<String>>()
     private val changedIds = mutableSetOf<String>()
+    private var highlightedId: String? = null
     private val blockNames = mutableMapOf<String, String>()
     private val clickTone by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
     private val rxBuffer = StringBuilder()
@@ -273,7 +274,7 @@ class MainActivity : Activity() {
         item.history.add(now to data.toList())
         if (item.history.size > 500) repeat(100) { if (item.history.isNotEmpty()) item.history.removeAt(0) }
         item.hz = if (now - item.first > 50) (item.count - 1) * 1000.0 / (now - item.first) else 0.0
-        if (changed) { changedIds.add(id); item.changedAt = now }
+        if (changed) { item.changedAt = now }
         rxCount++
         countText.text = "Кадров: $rxCount"
         updateRow(id)
@@ -288,7 +289,13 @@ class MainActivity : Activity() {
             blockNames[id] ?: "", f.data.size.toString(), f.data.joinToString(" "),
             "%.1f Hz".format(f.hz), f.count.toString(), elapsed)
         val row = existing ?: makeRow(values, false, 15f).also { created ->
-            created.setOnClickListener { selectedId = id; if (!receiving) renderHistory(id) }
+            created.setOnClickListener {
+                if (!receiving) {
+                    highlightedId = id
+                    refreshRowHighlights()
+                    renderHistory(id)
+                }
+            }
             created.setOnLongClickListener { editBlockName(id); true }
             table.addView(created)
             rowViews[id] = created
@@ -296,8 +303,19 @@ class MainActivity : Activity() {
         values.forEachIndexed { index, value -> (row.getChildAt(index) as TextView).text = value }
         for (i in 0 until row.childCount) {
             val cell = row.getChildAt(i) as TextView
-            cell.setBackgroundColor(if (id in changedIds) Color.rgb(255, 229, 229) else Color.WHITE)
-            cell.setTextColor(if (id in changedIds && i == 2) red else Color.rgb(25, 40, 60))
+            cell.setBackgroundColor(if (id == highlightedId) Color.rgb(255, 210, 210) else Color.WHITE)
+            cell.setTextColor(Color.rgb(25, 40, 60))
+        }
+    }
+
+    private fun refreshRowHighlights() {
+        frames.keys.forEach { id ->
+            val row = rowViews[id] ?: return@forEach
+            for (i in 0 until row.childCount) {
+                val cell = row.getChildAt(i) as TextView
+                cell.setBackgroundColor(if (id == highlightedId) Color.rgb(255, 210, 210) else Color.WHITE)
+                cell.setTextColor(Color.rgb(25, 40, 60))
+            }
         }
     }
 
@@ -348,6 +366,7 @@ class MainActivity : Activity() {
         rowViews.clear()
         previousData.clear()
         changedIds.clear()
+        highlightedId = null
         blockNames.clear()
         selectedId = null
         rxCount = 0
